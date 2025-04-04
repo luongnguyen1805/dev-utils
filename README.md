@@ -38,8 +38,12 @@ MIT License. Free to use and modify.
 
 ---
 
-## 🙌 Contributing
+## 🙌 Assistants && Contributions
 
-PRs and suggestions welcome! Please file an issue or open a discussion.
+**+OpenAI**
 
----
+**+Grok**
+
+**PRs and Suggestions welcome! Please file an issue or open a discussion.**
+
+
