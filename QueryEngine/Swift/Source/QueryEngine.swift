@@ -1,7 +1,7 @@
 import Foundation
+import MixedObjC
 
 class QueryEngine {
-
     //MARK: TYPES
     enum QueryOperator: String {
         case equal = "="
@@ -21,178 +21,320 @@ class QueryEngine {
     struct QueryCondition {
         let propertyName: String?
         let op: QueryOperator
-        let expectedValue: Any
+        let expectedValue: QueryValue
+    }
+
+    enum QueryValue: Equatable {
+        case string(String)
+        case float(Float)
+        case bool(Bool)
+
+        static func from(_ value: String) -> QueryValue {
+            if let floatValue = Float(value) {
+                return .float(floatValue)
+            } else if value.lowercased() == "true" || value.lowercased() == "false" {
+                return .bool(value.lowercased() == "true")
+            }
+            return .string(value)
+        }
     }
 
     enum QueryNode {
         case condition(QueryCondition)
         case group([QueryNode], ConditionOperator)
+        case range(start: Int?, end: Int?)
+    }
+
+    enum QueryError: Error {
+        case invalidQueryFormat
+        case invalidCondition
+        case parsingFailed(String)
+        case invalidRange(String)
+        case unsupportedType
     }
 
     //MARK: MAIN
-    func execute(objects: [Any], query: String) -> [Any] {
-        guard let queryNode = parseQuery(query) else { 
-            return [] 
-        }
-        return objects.filter { evaluateQuery(object: $0, node: queryNode) }
+    func execute(objects: [String], query: String) -> [String]? {
+        return doExecute(objects, query)
+    }
+
+    func execute(objects: [[String:Any]], query: String) -> [[String:Any]]? {
+        return doExecute(objects, query)
     }
 
     //MARK: PRIVATE
-    private func parseQuery(_ query: String) -> QueryNode? {
-        let cleanedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard cleanedQuery.hasPrefix("?(") && cleanedQuery.hasSuffix(")") else { return nil }
-        let innerQuery = String(cleanedQuery.dropFirst(2).dropLast(1))
+    private func doExecute<T>(_ objects: [T],_ query: String) -> [T]? {
+        do {
+            let cleanedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            if cleanedQuery.hasPrefix("?{") {
+                let predicateString = String(cleanedQuery.dropFirst(2).dropLast(1))
 
-        let parsed = parseExpression(innerQuery)
-        return parsed
+                let predicate = safePredicate(predicateString)
+
+                if (predicate == nil) {
+                    return nil
+                }
+
+                let filtered = objects.filter { predicate!.evaluate(with: $0) }                
+                return filtered
+            }
+            else if cleanedQuery.hasPrefix("?(") && cleanedQuery.hasSuffix(")") {
+                let innerQuery = String(cleanedQuery.dropFirst(2).dropLast(1))
+                guard let queryNode = try parseQuery(innerQuery) else {
+                    throw QueryError.invalidQueryFormat
+                }
+                return try applyQueryNode(queryNode, to: objects)
+            } else {
+                guard let rangeNode = try parseRangeQuery(cleanedQuery) else {
+                    throw QueryError.invalidRange("Invalid range format: \(cleanedQuery)")
+                }
+                return applyRange(rangeNode, to: objects)
+            }
+        } 
+        catch {
+            return nil
+        }
+    }    
+    private func parseQuery(_ query: String) throws -> QueryNode? {
+        try parseExpression(query)
     }
 
-    private func parseExpression(_ query: String) -> QueryNode? {
-        var stack: [QueryNode] = []
+    private func parseExpression(_ query: String) throws -> QueryNode {
+        var nodes: [QueryNode] = []
         var operators: [ConditionOperator] = []
         var currentExpr = ""
-        
+
         var i = 0
-        while i < query.count {
-            let char = query[query.index(query.startIndex, offsetBy: i)]
-            
+        let queryCount = query.count
+        while i < queryCount {
+            let index = query.index(query.startIndex, offsetBy: i)
+            let char = query[index]
+            if (char == " " || char == "\n" || char == "\t") {
+                i += 1
+                continue
+            }
+
             if char == "(" {
-                var nestedLevel = 1
-                var j = i + 1
-                while j < query.count {
-                    let nestedChar = query[query.index(query.startIndex, offsetBy: j)]
-                    if nestedChar == "(" { nestedLevel += 1 }
-                    if nestedChar == ")" { nestedLevel -= 1 }
-                    if nestedLevel == 0 { break }
-                    j += 1
-                }
-                if let nestedGroup = parseExpression(String(query[query.index(query.startIndex, offsetBy: i + 1)..<query.index(query.startIndex, offsetBy: j)])) {
-                    stack.append(nestedGroup)
-                }
-                i = j
+                let (nestedNode, endIndex) = try parseNestedGroup(query, startingAt: i)
+                nodes.append(nestedNode)
+                i = endIndex
             } else if char == "&" || char == "|" {
                 if !currentExpr.isEmpty {
-                    if let condition = parseCondition(currentExpr) {
-                        stack.append(.condition(condition))
-                    }
+                    nodes.append(try parseCondition(currentExpr))
                     currentExpr = ""
                 }
-                let op = (char == "&") ? ConditionOperator.and : ConditionOperator.or
-                operators.append(op)
+                operators.append(char == "&" ? .and : .or)
             } else {
                 currentExpr.append(char)
             }
             i += 1
         }
-                
-        if !currentExpr.isEmpty, let condition = parseCondition(currentExpr) {
-            stack.append(.condition(condition))
+
+        if !currentExpr.isEmpty {
+            nodes.append(try parseCondition(currentExpr))
         }
-        
-        return buildGroup(stack, operators)
+
+        return buildGroup(nodes: nodes, operators: operators)
     }
 
-    private func parseCondition(_ conditionStr: String) -> QueryCondition? {
-        let regex = "@\\.?([\\w]+)?\\s*(=|!=|>|>=|<|<=|=~)\\s*(.+)"
-        let components = getRegexMatchGroups(for: conditionStr, pattern: regex)
+    private func parseNestedGroup(_ query: String, startingAt start: Int) throws -> (QueryNode, Int) {
+        var nestedLevel = 1
+        var j = start + 1
+        while j < query.count {
+            let char = query[query.index(query.startIndex, offsetBy: j)]
+            if (char == " " || char == "\n" || char == "\t") {
+                j += 1
+                continue
+            }
 
-        if (components.count == 0) {
-            return nil
+            if char == "(" { nestedLevel += 1 }
+            if char == ")" { nestedLevel -= 1 }
+            if nestedLevel == 0 { break }
+            j += 1
+        }
+        guard j < query.count else { throw QueryError.parsingFailed("Unmatched parentheses") }
+        let nestedQuery = String(query[query.index(query.startIndex, offsetBy: start + 1)..<query.index(query.startIndex, offsetBy: j)])
+        let node = try parseExpression(nestedQuery)
+        return (node, j)
+    }
+
+    private func parseCondition(_ conditionStr: String) throws -> QueryNode {
+        let regex = "\\s*(@(?:\\.[\\w]+)?)\\s*(!=|>|>=|<|<=|=~|=)\\s*(.+)\\s*"
+
+        let components = getRegexMatchGroups(for: conditionStr, pattern: regex)
+        
+        guard components.count >= 3 else {
+            throw QueryError.invalidCondition
         }
 
         let propertyName = components[0].hasPrefix("@.") ? String(components[0].dropFirst(2)) : nil
-        let op = QueryOperator(rawValue: String(components[1]))!
-        var expectedValue: Any = components[2]           
-        if let intValue = Int(expectedValue as! String) {
-            expectedValue = intValue
-        }
-        else {
-            expectedValue = expectedValue as! String
-        }
 
-        return QueryCondition(propertyName: propertyName, op: op, expectedValue: expectedValue)
+        guard let op = QueryOperator(rawValue: components[1]) else {
+            throw QueryError.parsingFailed("Invalid operator: \(components[1])")
+        }
+        let expectedValue = QueryValue.from(components[2].trimmingCharacters(in: .whitespaces))
+        
+        return .condition(QueryCondition(propertyName: propertyName, op: op, expectedValue: expectedValue))
     }
 
-    private func buildGroup(_ nodes: [QueryNode], _ operators: [ConditionOperator]) -> QueryNode? {
-        if nodes.isEmpty { return nil }
-        if nodes.count == 1 { return nodes.first }
-        
-        var combined: [QueryNode] = [nodes[0]]
-        for i in 1..<nodes.count {
-            combined.append(nodes[i])
+    private func parseRangeQuery(_ query: String) throws -> QueryNode? {
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        guard trimmed.contains("..") else { return nil }
+
+        let parts = trimmed.split(separator: "..").map { String($0).trimmingCharacters(in: .whitespaces) }
+        guard parts.count == 2 else { throw QueryError.invalidRange("Invalid range syntax: \(query)") }
+
+        let start: Int?
+        let end: Int?
+
+        if parts[0].isEmpty {
+            start = nil
+            end = Int(parts[1])
+        } else if parts[1].isEmpty {
+            start = Int(parts[0])
+            end = nil
+        } else {
+            start = Int(parts[0])
+            end = Int(parts[1])
         }
-        
-        return .group(combined, operators.first ?? .and)
+
+        guard start != nil || end != nil else {
+            throw QueryError.invalidRange("Invalid range values: \(query)")
+        }
+
+        return .range(start: start, end: end)
     }
 
-    private func evaluateQuery(object: Any, node: QueryNode) -> Bool {
+    private func buildGroup(nodes: [QueryNode], operators: [ConditionOperator]) -> QueryNode {
+        guard !nodes.isEmpty else { return .condition(QueryCondition(propertyName: nil, op: .equal, expectedValue: .bool(false))) }
+        if nodes.count == 1 { return nodes[0] }
+        return .group(nodes, operators.first ?? .and)
+    }
+
+    private func applyQueryNode<T>(_ node: QueryNode, to objects: [T]) throws -> [T] {
         switch node {
-        case .condition(let condition):
-            return evaluateCondition(object: object, condition: condition)
-        case .group(let nodes, let conditionOperator):
-            var result = evaluateQuery(object: object, node: nodes[0])
-            for i in 1..<nodes.count {
-                let currentResult = evaluateQuery(object: object, node: nodes[i])
-                result = (conditionOperator == .and) ? (result && currentResult) : (result || currentResult)
-            }
-            return result
+            case .condition, .group:
+                return try objects.filter { try evaluateQuery(object: $0, node: node) }
+            case .range(let start, let end):
+                return applyRange(.range(start: start, end: end), to: objects)
         }
     }
 
-    private func evaluateCondition(object: Any, condition: QueryCondition) -> Bool {
-        if let strObject = object as? String {
-            return condition.propertyName == nil && strObject == (condition.expectedValue as? String)
-        } else if let dictObject = object as? [String: Any], let key = condition.propertyName {
-            if let value = dictObject[key] {
-                if condition.op == .regexMatch, let stringValue = value as? String, let regexPattern = condition.expectedValue as? String {
-                    return stringValue.range(of: regexPattern, options: .regularExpression) != nil
+    private func evaluateQuery<T>(object: T, node: QueryNode) throws -> Bool {
+        switch node {
+            case .condition(let condition):
+                return try evaluateCondition(object: object, condition: condition)
+            case .group(let nodes, let op):
+                let initial = try evaluateQuery(object: object, node: nodes[0])
+                return try nodes.dropFirst().reduce(initial) { result, node in
+                    let nextResult = try evaluateQuery(object: object, node: node)
+                    return op == .and ? result && nextResult : result || nextResult
                 }
-                if let expected = condition.expectedValue as? String, let actual = value as? String {
-                    return (condition.op == .equal) ? (actual == expected) : (actual != expected)
-                }
-                if let expected = condition.expectedValue as? Int, let actual = value as? Int {
+            case .range:
+                fatalError("Range nodes should not reach evaluateQuery")
+        }
+    }
+
+    private func evaluateCondition<T>(object: T, condition: QueryCondition) throws -> Bool {
+        if let string = object as? String {
+            guard condition.propertyName == nil else { return false }
+
+            switch condition.expectedValue {
+                case .string(let expected):
                     switch condition.op {
-                    case .equal: return actual == expected
-                    case .notEqual: return actual != expected
-                    case .greaterThan: return actual > expected
-                    case .greaterThanOrEqual: return actual >= expected
-                    case .lessThan: return actual < expected
-                    case .lessThanOrEqual: return actual <= expected
-                    default: return false
+                        case .equal: return string == expected
+                        case .notEqual: return string != expected
+                        case .regexMatch: return string.range(of: expected, options: .regularExpression) != nil
+                        default: return false
                     }
-                }
+                default:
+                    return false
             }
+        } else if let dict = object as? [String: Any], let key = condition.propertyName, let value = dict[key] {
+            
+            let valueFloat = castToFloat(value)
+            let valueFinal = valueFloat != nil ? valueFloat! : value
+
+            switch (condition.expectedValue, valueFinal) {
+                case (.string(let expected), let actual as String):
+                    switch condition.op {
+                        case .equal: return actual == expected
+                        case .notEqual: return actual != expected
+                        case .regexMatch: return actual.range(of: expected, options: .regularExpression) != nil
+                        default: return false
+                    }
+                case (.float(let expected), let actual as Float):                
+                    switch condition.op {
+                        case .equal: return actual == expected
+                        case .notEqual: return actual != expected
+                        case .greaterThan: return actual > expected
+                        case .greaterThanOrEqual: return actual >= expected
+                        case .lessThan: return actual < expected
+                        case .lessThanOrEqual: return actual <= expected
+                        default: return false
+                    }
+                case (.bool(let expected), let actual as Bool):
+                    return condition.op == .equal ? actual == expected : actual != expected
+                default:
+                    return false
+            }
+        } else {
+            throw QueryError.unsupportedType
         }
-        return false
     }
 
-    func getRegexMatchGroups(for input: String, pattern: String) -> [String] {
+    private func applyRange<T>(_ node: QueryNode, to objects: [T]) -> [T] {
+        guard case .range(let start, let end) = node else { return objects }
+        let count = objects.count
+
+        let resolvedStart: Int
+        let resolvedEnd: Int
+
+        if let start = start, let end = end {
+            resolvedStart = max(0, start)
+            resolvedEnd = min(count, end)
+        } else if let end = end, start == nil {
+            if end >= 0 {
+                resolvedStart = 0
+                resolvedEnd = min(end, count)
+            } else {
+                resolvedStart = max(0, count + end)
+                resolvedEnd = count
+            }
+        } else if let start = start, end == nil {
+            resolvedStart = max(0, start)
+            resolvedEnd = count
+        } else {
+            return objects
+        }
+
+        guard resolvedStart <= resolvedEnd else { return [] }
+        return Array(objects[resolvedStart..<min(resolvedEnd, count)])
+    }
+
+    private func getRegexMatchGroups(for input: String, pattern: String) -> [String] {
         do {
-            // Create the regular expression object
-            let regex = try NSRegularExpression(pattern: pattern, options: [])
-            
-            // Define the range of the input string
+            let regex = try NSRegularExpression(pattern: pattern)
             let range = NSRange(input.startIndex..<input.endIndex, in: input)
-            
-            // Get the first match
-            guard let match = regex.firstMatch(in: input, options: [], range: range) else {
-                return []
+            guard let match = regex.firstMatch(in: input, range: range) else { return [] }
+            return (1..<match.numberOfRanges).compactMap { i in
+                guard let range = Range(match.range(at: i), in: input) else { return nil }
+                return String(input[range])
             }
-            
-            // Extract all captured groups
-            var groups: [String] = []
-            for i in 0..<match.numberOfRanges {
-                let range = match.range(at: i)
-                if range.location != NSNotFound, let swiftRange = Range(range, in: input) {
-                    groups.append(String(input[swiftRange]))
-                }
-            }
-            
-            return groups
         } catch {
-            print("Invalid regex pattern: \(error)")
             return []
         }
-    }   
+    }
+
+    private func castToFloat(_ value: Any) -> Float? {
+        if let floatValue = value as? Float {
+            return floatValue
+        } else if let doubleValue = value as? Double {
+            return Float(doubleValue)
+        } else if let intValue = value as? Int {
+            return Float(intValue)
+        }
+        return nil
+    }
 
 }
