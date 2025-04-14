@@ -1,49 +1,58 @@
+
 # QueryEngine
 
-**QueryEngine** is a lightweight Swift utility that enables filtering of structured data (e.g. arrays of dictionaries or strings) using an XPath/Predicate-inspired query syntax.
-
----
-
-## ✨ Features
-
-- Query any list of `[Dictionary<String, Any>]` or `[String]`
-- Support for structured, readable query syntax
-- Expression-based filtering with logical operators
-- String match, regex match, numeric comparison, boolean logic
-
----
+**QueryEngine** is a lightweight utility that enables filtering of structured data (e.g. arrays of dictionaries or strings) using an XPath/Predicate-inspired query syntax.
 
 ## 🧠 Example Usage
 
 ```swift
 let objs = [ 
     ["name": "John", "age": 19, "mark": 2.4],
-    ["name": "Tako", "age": 10, "mark": 9.3]
+    ["name": "Tako", "age": 10, "mark": 9.3]         
 ]
-
 let engine = QueryEngine()
-
 let results = engine.execute(objects: objs, query: """
-    ?{
-        name == 'Tako'
-    }
-""")
+        ?(
+            @.name = Tako
+        )
+    """)
 
 print(results == nil ? "Invalid Query" : results!)
 ```
 
-## 📜 License
+<br/>
 
-MIT License. Free to use and modify.
+# MapHelper
 
----
+Tired of working with Array and Dictionary with nested index/key...
 
-## 🙌 Assistants && Contributions
+Let's seeking convenient ways with subscript syntax.
 
-**+OpenAI**
+```swift
 
-**+Grok**
+var myArray = [
+    ["name": "John"],
+    ["name": "David"]
+]
+myArray[of: 0, "name"] = "Alex"
+MapHelper.prettyPrint(myArray)
 
-**PRs and Suggestions welcome! Please file an issue or open a discussion.**
+var myDict = [
+    "books": [
+        ["title": "Alice"],
+        ["title": "Red"],
+        ["title": "Dark"]
+    ]
+]
+myDict[of: "books", 2, "title"] = "Adventure"
+MapHelper.prettyPrint(myDict)
+
+```
+
+<br/>
+
+# License
+
+None
 
 

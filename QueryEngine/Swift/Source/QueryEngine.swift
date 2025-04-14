@@ -178,31 +178,31 @@ class QueryEngine {
     }
 
     private func parseRangeQuery(_ query: String) throws -> QueryNode? {
+
         let trimmed = query.trimmingCharacters(in: .whitespaces)
-        guard trimmed.contains("..") else { return nil }
 
-        let parts = trimmed.split(separator: "..").map { String($0).trimmingCharacters(in: .whitespaces) }
-        guard parts.count == 2 else { throw QueryError.invalidRange("Invalid range syntax: \(query)") }
+        let parts = trimmed.components(separatedBy: "..")
+        var first:Int? = nil
+        var second = 0
 
-        let start: Int?
-        let end: Int?
-
-        if parts[0].isEmpty {
-            start = nil
-            end = Int(parts[1])
-        } else if parts[1].isEmpty {
-            start = Int(parts[0])
-            end = nil
-        } else {
-            start = Int(parts[0])
-            end = Int(parts[1])
+        switch parts.count {
+            case 1:
+                if let value = Int(parts[0]) {
+                    first = value
+                    second = value
+                }
+            case 2:
+                if let firstValue = Int(parts[0]), !parts[0].isEmpty {
+                    first = firstValue
+                }
+                if let secondValue = Int(parts[1]) {
+                    second = secondValue
+                }
+            default:
+                throw QueryError.invalidRange("Invalid range syntax: \(query)")
         }
 
-        guard start != nil || end != nil else {
-            throw QueryError.invalidRange("Invalid range values: \(query)")
-        }
-
-        return .range(start: start, end: end)
+        return .range(start: first, end: second)
     }
 
     private func buildGroup(nodes: [QueryNode], operators: [ConditionOperator]) -> QueryNode {
@@ -296,10 +296,10 @@ class QueryEngine {
         } else if let end = end, start == nil {
             if end >= 0 {
                 resolvedStart = 0
-                resolvedEnd = min(end, count)
+                resolvedEnd = min(end, count) - 1
             } else {
                 resolvedStart = max(0, count + end)
-                resolvedEnd = count
+                resolvedEnd = count - 1
             }
         } else if let start = start, end == nil {
             resolvedStart = max(0, start)
@@ -309,7 +309,7 @@ class QueryEngine {
         }
 
         guard resolvedStart <= resolvedEnd else { return [] }
-        return Array(objects[resolvedStart..<min(resolvedEnd, count)])
+        return Array(objects[resolvedStart...min(resolvedEnd, count)])
     }
 
     private func getRegexMatchGroups(for input: String, pattern: String) -> [String] {

@@ -48,5 +48,23 @@ final class QueryEngineTests: XCTestCase {
         let results = engine.execute(objects: objs, query: "?((@.age>12)&(@.mark<5.5))")     
         XCTAssertTrue(results != nil && results!.count > 0 && results![0]["name"] as! String == "John")        
     }
+
+    func test_range() throws {
+
+        let objs = [ 
+            ["name": "John", "age": 19, "mark": 2.4],
+            ["name": "Tako", "age": 10, "mark": 9.3],
+            ["name": "Alex", "age": 14, "mark": 6.3]         
+        ]
+
+        let engine = QueryEngine()
+        let results = engine.execute(objects: objs, query: "..2")     
+        XCTAssertTrue(results != nil && results!.count == 2 && results![1]["name"] as! String == "Tako")  
+
+        let objs2 = ["OpenAI", "Grok", "Claude", "Gemini", "Perplexity", "Copilot"]
+        let results2 = engine.execute(objects: objs2, query: "..-1")        
+        XCTAssertTrue(results2 != nil && results2!.count > 0 && results2![0] == "Copilot")  
+      
+    }
     
 }
