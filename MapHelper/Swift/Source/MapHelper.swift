@@ -9,8 +9,7 @@ extension Array {
             if (newValue == nil) {
                 return
             }
-            let targetValue = MapHelper.TargetValue(mode: .setValue, key: nil, value: newValue!)
-            MapHelper.applyChangeArray(to: &self, navigator: nav, targetValue: targetValue)
+            MapHelper.applyChangeArray(to: &self, navigator: nav, targetValue: MapHelper.TargetValue(mode: .setValue, key: nil, value: newValue!))
         }
     }
 }
@@ -24,8 +23,7 @@ extension Dictionary {
             if (newValue == nil) {
                 return
             }
-            let targetValue = MapHelper.TargetValue(mode: .setValue, key: nil, value: newValue!)
-            MapHelper.applyChangeDictionary(to: &self, navigator: nav, targetValue: targetValue)
+            MapHelper.applyChangeDictionary(to: &self, navigator: nav, targetValue: MapHelper.TargetValue(mode: .setValue, key: nil, value: newValue!))
         }
     }
 }
@@ -79,13 +77,21 @@ class MapHelper {
     static func applyChangeArray<Element>(to obj: inout [Element], navigator: [Any], targetValue: TargetValue) {
         var ref: Any = obj
         applyChange(to: &ref, navigator: navigator, targetValue: targetValue)
-        obj = ref as! [Element]
+        if let result = ref as? [Element] {
+            obj = result
+        } else {
+            print("Change not applicable")
+        }
     }
 
     static func applyChangeDictionary<Key,Value>(to obj: inout [Key:Value], navigator: [Any], targetValue: TargetValue) {
         var ref: Any = obj
         applyChange(to: &ref, navigator: navigator, targetValue: targetValue)
-        obj = ref as! [Key:Value]
+        if let result = ref as? [Key:Value] {
+            obj = result
+        } else {
+            print("Change not applicable")
+        }
     }
 
     static func applyChange(to obj: inout Any, navigator: [Any], targetValue: TargetValue) {
@@ -104,14 +110,37 @@ class MapHelper {
                 if remainingNavigator.isEmpty {
                     switch targetValue.mode {
                     case .setValue:
-                        dict[key] = targetValue.value
-                    case .setKeyValue:
-                        if let targetKey = targetValue.key {
-                            dict[targetKey] = targetValue.value
+                        
+                        if let valueArray = targetValue.value as? [Any] {
+                            if var arr = dict[key] as? [Any] {
+                                arr.append(contentsOf: valueArray)
+                                dict[key] = arr
+                            }
                         }
-                    default:
-                        break // Ignore other modes at this level
+                        else if let valueDict = targetValue.value as? [String:Any] {
+                            if var childDict = dict[key] as? [String:Any] {
+                                childDict.merge(valueDict) { _, newValue in
+                                    newValue
+                                }
+                                dict[key] = childDict
+                            }
+                        }
+                        else {
+                            dict[key] = targetValue.value
+                        }
+                        
+                    case .setKeyValue:
+                        if var childDict = dict[key] as? [String:Any], let targetKey = targetValue.key {
+                            childDict[targetKey] = targetValue.value
+                            dict[key] = childDict
+                        }
+                    case .appendValue:
+                        if var arr = dict[key] as? [Any] {
+                            arr.append(targetValue.value)
+                            dict[key] = arr
+                        }
                     }
+                    
                 } else if var nextLevel = dict[key] {
                     applyChange(to: &nextLevel, navigator: remainingNavigator, targetValue: targetValue)
                     dict[key] = nextLevel
@@ -122,11 +151,40 @@ class MapHelper {
             if let index = currentKeyOrIndex as? Int {
                 if index >= 0 && index < array.count {
                     if remainingNavigator.isEmpty {
-                        if targetValue.mode == .appendValue {
-                            array.append(targetValue.value)
-                        } else if targetValue.mode == .setValue {
-                            array[index] = targetValue.value
+                        
+                        switch targetValue.mode {
+                        case .setValue:
+                            
+                            if let valueArray = targetValue.value as? [Any] {
+                                if var arr = array[index] as? [Any] {
+                                    arr.append(contentsOf: valueArray)
+                                    array[index] = arr
+                                }
+                            }
+                            else if let valueDict = targetValue.value as? [String:Any] {
+                                if var childDict = array[index] as? [String:Any] {
+                                    childDict.merge(valueDict) { _, newValue in
+                                        newValue
+                                    }
+                                    array[index] = childDict
+                                }
+                            }
+                            else {
+                                array[index] = targetValue.value
+                            }
+                                                    
+                        case .setKeyValue:
+                            if var dict = array[index] as? [String:Any], let targetKey = targetValue.key {
+                                dict[targetKey] = targetValue.value
+                                array[index] = dict
+                            }
+                        case .appendValue:
+                            if var arr = array[index] as? [Any] {
+                                arr.append(targetValue.value)
+                                array[index] = arr
+                            }
                         }
+
                     } else {
                         var nextLevel = array[index]
                         applyChange(to: &nextLevel, navigator: remainingNavigator, targetValue: targetValue)

@@ -3,7 +3,11 @@ print("Query Engine")
 
 let objs = ["OpenAI", "Grok", "Claude", "Gemini", "Perplexity", "Copilot"]
 let engine = QueryEngine()
-var results = engine.execute(objects: objs, query: "?(@=~^.e)")        
+var result = engine.execute(objects: objs, query: "?(@=~^.e)")
 
-print(results == nil ? "Invalid Query" : results!)
+if (result == nil) {
+    print("Invalid Query")
+} else {
+    print(result!.filtered!)
+}
 

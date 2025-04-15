@@ -11,12 +11,12 @@ if (result == nil) {
     print(result as! String)
 }
 
-var myArray = [
-    ["name": "John"],
-    ["name": "David"]
-]
-myArray[of: 0, "name"] = "Alex"
-MapHelper.prettyPrint(myArray)
+//var myArray = [
+//    ["name": "John"],
+//    ["name": "David"]
+//]
+//myArray[of: 0, "name"] = "Alex"
+//MapHelper.prettyPrint(myArray)
 
 var myDict = [
     "books": [
@@ -25,5 +25,7 @@ var myDict = [
         ["title": "Dark"]
     ]
 ]
-myDict[of: "books", 2, "title"] = "Adventure"
+myDict[of: "books"] = ["title": "Adventure", "color": "red"]
 MapHelper.prettyPrint(myDict)
+
+

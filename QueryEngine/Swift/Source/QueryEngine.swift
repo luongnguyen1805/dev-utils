@@ -2,6 +2,7 @@ import Foundation
 import MixedObjC
 
 class QueryEngine {
+    
     //MARK: TYPES
     enum QueryOperator: String {
         case equal = "="
@@ -52,18 +53,28 @@ class QueryEngine {
         case invalidRange(String)
         case unsupportedType
     }
+    
+    struct QueryResult<T> {
+        var filtered: [T]?
+        var indices: [Int]?
+    }
 
     //MARK: MAIN
-    func execute(objects: [String], query: String) -> [String]? {
+    func execute(objects: [String], query: String) -> QueryResult<String>? {
         return doExecute(objects, query)
     }
 
-    func execute(objects: [[String:Any]], query: String) -> [[String:Any]]? {
+    func execute(objects: [[String:Any]], query: String) -> QueryResult<[String:Any]>? {
         return doExecute(objects, query)
     }
-
+    
     //MARK: PRIVATE
-    private func doExecute<T>(_ objects: [T],_ query: String) -> [T]? {
+    private var foundIndices: [Int]?
+
+    private func doExecute<T>(_ objects: [T],_ query: String) -> QueryResult<T>? {
+        
+        foundIndices = []
+        
         do {
             let cleanedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
             if cleanedQuery.hasPrefix("?{") {
@@ -74,9 +85,18 @@ class QueryEngine {
                 if (predicate == nil) {
                     return nil
                 }
-
-                let filtered = objects.filter { predicate!.evaluate(with: $0) }                
-                return filtered
+                
+                var filtered: [T] = []
+                for i in objects.indices {
+                    let obj = objects[i]
+                    let isFilterValid = predicate!.evaluate(with: obj)
+                    if isFilterValid == true {
+                        filtered.append(obj)
+                        foundIndices?.append(i)
+                    }
+                }
+                
+                return QueryResult(filtered: filtered, indices: foundIndices)
             }
             else if cleanedQuery.hasPrefix("?(") && cleanedQuery.hasSuffix(")") {
                 let innerQuery = String(cleanedQuery.dropFirst(2).dropLast(1))
@@ -95,6 +115,7 @@ class QueryEngine {
             return nil
         }
     }    
+    
     private func parseQuery(_ query: String) throws -> QueryNode? {
         try parseExpression(query)
     }
@@ -211,10 +232,22 @@ class QueryEngine {
         return .group(nodes, operators.first ?? .and)
     }
 
-    private func applyQueryNode<T>(_ node: QueryNode, to objects: [T]) throws -> [T] {
+    private func applyQueryNode<T>(_ node: QueryNode, to objects: [T]) throws -> QueryResult<T> {
         switch node {
             case .condition, .group:
-                return try objects.filter { try evaluateQuery(object: $0, node: node) }
+                
+                var filtered: [T] = []
+                for i in objects.indices {
+                    let obj = objects[i]
+                    let isFilterValid = try evaluateQuery(object: obj, node: node)
+                    if isFilterValid == true {
+                        filtered.append(obj)
+                        foundIndices?.append(i)
+                    }
+                }
+            
+                return QueryResult(filtered: filtered, indices: foundIndices)
+            
             case .range(let start, let end):
                 return applyRange(.range(start: start, end: end), to: objects)
         }
@@ -283,8 +316,11 @@ class QueryEngine {
         }
     }
 
-    private func applyRange<T>(_ node: QueryNode, to objects: [T]) -> [T] {
-        guard case .range(let start, let end) = node else { return objects }
+    private func applyRange<T>(_ node: QueryNode, to objects: [T]) -> QueryResult<T> {
+        
+        guard case .range(let start, let end) = node else {
+            return QueryResult(filtered: objects, indices: nil)
+        }
         let count = objects.count
 
         let resolvedStart: Int
@@ -305,11 +341,16 @@ class QueryEngine {
             resolvedStart = max(0, start)
             resolvedEnd = count
         } else {
-            return objects
+            return QueryResult(filtered: objects, indices: nil)
         }
 
-        guard resolvedStart <= resolvedEnd else { return [] }
-        return Array(objects[resolvedStart...min(resolvedEnd, count)])
+        guard resolvedStart <= resolvedEnd else {
+            return QueryResult(filtered: [], indices: nil)
+        }
+        
+        let filtered = Array(objects[resolvedStart...min(resolvedEnd, count)])
+        
+        return QueryResult(filtered: filtered, indices: nil)
     }
 
     private func getRegexMatchGroups(for input: String, pattern: String) -> [String] {
