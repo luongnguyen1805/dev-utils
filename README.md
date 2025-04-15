@@ -24,9 +24,7 @@ print(results == nil ? "Invalid Query" : results!)
 
 # MapHelper
 
-Tired of working with Array and Dictionary with nested index/key...
-
-Let's seeking convenient ways with subscript syntax.
+Simplify working with nested Arrays and Dictionaries using clean, intuitive subscript syntax. Say goodbye to complex indexing and key lookups!
 
 ```swift
 
