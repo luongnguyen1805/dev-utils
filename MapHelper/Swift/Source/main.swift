@@ -11,13 +11,6 @@ if (result == nil) {
     print(result as! String)
 }
 
-//var myArray = [
-//    ["name": "John"],
-//    ["name": "David"]
-//]
-//myArray[of: 0, "name"] = "Alex"
-//MapHelper.prettyPrint(myArray)
-
 var myDict = [
     "books": [
         ["title": "Alice"],
@@ -25,7 +18,9 @@ var myDict = [
         ["title": "Dark"]
     ]
 ]
-myDict[of: "books"] = ["title": "Adventure", "color": "red"]
+myDict[of: "books",0] = ["title": "Adventure", "color": "red"]
+
+myDict[selector: "books[0]/title"] = "Bingo"
 
 let str = MapHelper.anyToJSONString(myDict) ?? ""
 
