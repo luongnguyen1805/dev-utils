@@ -9,8 +9,18 @@ let package = Package(
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
         // Targets can depend on other targets in this package and products from dependencies.
+        .target(
+            name: "MixedObjC",
+            path: "MixedObjC",
+            publicHeadersPath: ".", // Headers in the same directory
+            cSettings: [
+                .headerSearchPath(".") // Find SafePredicate.h
+            ]
+        ),
+        // Swift target, depends on SafePredicate
         .executableTarget(
             name: "Source",
+            dependencies: ["MixedObjC"],
             path: "Source"
         ),        
 

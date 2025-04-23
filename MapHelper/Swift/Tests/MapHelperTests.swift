@@ -39,6 +39,18 @@ final class MapHelperTests: XCTestCase {
             XCTFail()
         }
     }
+    
+    func test_nil() throws {
+        let obj:[String: Any] = [
+            "students": [
+                ["name": "John", "age": 13],
+                ["name": "Alex", "age": 12]
+            ],
+            "address": "NewYork"
+        ]
+        
+        XCTAssertTrue(MapHelper.getValue(of: obj, navigator: []) == nil)
+    }
 
     func test_dict() throws {
 

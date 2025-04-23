@@ -26,6 +26,8 @@ var myDict = [
     ]
 ]
 myDict[of: "books"] = ["title": "Adventure", "color": "red"]
-MapHelper.prettyPrint(myDict)
 
+let str = MapHelper.anyToJSONString(myDict) ?? ""
+
+print(str)
 

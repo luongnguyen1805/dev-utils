@@ -12,6 +12,35 @@ extension Array {
             MapHelper.applyChangeArray(to: &self, navigator: nav, targetValue: MapHelper.TargetValue(mode: .setValue, key: nil, value: newValue!))
         }
     }
+    
+    subscript(selector selector: String) -> Any? {
+        get {
+            if (selector.isEmpty) {
+                return nil
+            }
+            
+            let results = MapHelper.executeSelector(self, selector)
+            
+            return results.map { result in
+                let navigator = result.navigator
+                return self[of: navigator]
+            }
+        }
+        
+        set(newValue) {
+            if (selector.isEmpty) {
+                return
+            }
+            
+            let results = MapHelper.executeSelector(self, selector)
+            
+            results.forEach {result in
+                let navigator = result.navigator
+                self[of: navigator] = newValue
+            }
+            
+        }
+    }
 }
 
 extension Dictionary {
@@ -26,10 +55,54 @@ extension Dictionary {
             MapHelper.applyChangeDictionary(to: &self, navigator: nav, targetValue: MapHelper.TargetValue(mode: .setValue, key: nil, value: newValue!))
         }
     }
+
+    subscript(selector selector: String) -> Any? {
+        get {
+            if (selector.isEmpty) {
+                return nil
+            }
+            
+            let results = MapHelper.executeSelector(self, selector)
+            
+            return results.map { result in
+                let navigator = result.navigator
+                return self[of: navigator]
+            }
+        }
+        
+        set(newValue) {
+            if (selector.isEmpty) {
+                return
+            }
+            
+            let results = MapHelper.executeSelector(self, selector)
+            
+            results.forEach {result in
+                let navigator = result.navigator
+                self[of: navigator] = newValue
+            }
+            
+        }
+    }
+
 }
 
 class MapHelper {
+
+    struct Filter {
+        var key: String?
+        var keySelector: String?
+
+        var index: String?
+        var indexSelector: String?
+        var indexRangeSelector: String?
+    }
     
+    struct FilteredRecord {
+        var navigator:[Any] = []
+        var source: Any?
+    }
+
     struct TargetValue {
         enum Mode {
             case setValue
@@ -44,7 +117,7 @@ class MapHelper {
     static func getValue(of obj: Any, navigator: [Any]) -> Any? {
         
         guard !navigator.isEmpty else {
-            return obj
+            return nil
         }
 
         let currentKeyOrIndex = navigator[0]
@@ -96,9 +169,6 @@ class MapHelper {
 
     static func applyChange(to obj: inout Any, navigator: [Any], targetValue: TargetValue) {
         guard !navigator.isEmpty else {
-            if targetValue.mode == .setValue {
-                obj = targetValue.value
-            }
             return
         }
 
@@ -194,18 +264,129 @@ class MapHelper {
                 }
             }
         }
+        
     }
     
-    static func prettyPrint<T: Encodable>(_ value: T) {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        do {
-            let data = try encoder.encode(value)
-            if let jsonString = String(data: data, encoding: .utf8) {
-                print(jsonString)
-            }
-        } catch {
-            print("Pretty print failed: \(error)")
+    static func anyToJSONString(_ value: Any) -> String? {
+        
+        // Check if the value is a valid JSON object
+        guard JSONSerialization.isValidJSONObject(value) else {
+            print("Invalid JSON object")
+            return nil
         }
+        
+        do {
+            let data = try JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted])
+            return String(data: data, encoding: .utf8)
+        } catch {
+            print("Error serializing JSON: \(error)")
+            return nil
+        }
+        
+    }
+    
+    static func executeSelector(_ obj: Any, _ selector: String) -> [FilteredRecord] {
+        
+        let queryEngine = QueryEngine()
+        var filters:[Filter] = []
+
+        selector.split(separator: "/").forEach { comp in
+            let str = String(comp)
+            if str.lengthOfBytes(using: .utf8) < 1 {
+                return
+            }
+            
+            filters.append(contentsOf: parseFilters(from: str))
+        }
+
+        let currentSource = obj
+        var results = [
+            FilteredRecord(navigator: [], source: currentSource)
+        ]
+        
+        for filter in filters {
+            
+            var tmp: [FilteredRecord] = []
+            
+            for record in results {
+                
+                if let key = filter.key, let dict = record.source as? [String:Any] {
+                    
+                    let source = dict[key]
+                    var navigator = record.navigator
+                    navigator.append(key)
+                    tmp.append(FilteredRecord(navigator: navigator, source: source))
+                    
+                } else if let keySelector = filter.keySelector, let dict = record.source as? [String:Any] {
+                    
+                    let sourceArray = Array(dict.keys)
+                    let queryResult = queryEngine.execute(objects: sourceArray, query: keySelector)
+                    if let indices = queryResult?.indices {
+                        for i in indices {
+                            let source = sourceArray[i]
+                            var navigator = record.navigator
+                            navigator.append(sourceArray[i])
+                            tmp.append(FilteredRecord(navigator: navigator, source: dict[source]))
+                        }
+                    }
+                    
+                }
+                else if let index = Int(filter.index ?? ""), let array = record.source as? [Any] {
+                    
+                    let source = array[index]
+                    var navigator = record.navigator
+                    navigator.append(index)
+                    tmp.append(FilteredRecord(navigator: navigator, source: source))
+
+                }
+                else if let indexSelector = filter.indexSelector ?? filter.indexRangeSelector, let array = record.source as? [Any] {
+                    
+                    let sourceArray = array
+                    let queryResult = queryEngine.execute(objects: sourceArray, query: indexSelector)
+                    if let indices = queryResult?.indices {
+                        for i in indices {
+                            let source = sourceArray[i]
+                            var navigator = record.navigator
+                            navigator.append(i)
+                            tmp.append(FilteredRecord(navigator: navigator, source: source))
+                        }
+                    }
+
+                }
+
+            }
+            
+            results = tmp
+        }
+        
+        return results
+    }
+    
+    //MARK: PRIVATE
+    private static func parseFilters(from: String) -> [Filter] {
+        let regx = #/^((?<keySelector>\?\([^\[\]]+\))|(?<key>[^\[\]]+))?(\[(?<indexRangeSelector>\d*\.\.-?\d+)\]|\[(?<indexSelector>\?\([^\[\]]+\))\]|\[(?<index>\d+)\])?$/#
+
+        var filters: [Filter] = []
+        
+        if let match = from.firstMatch(of: regx) {
+            if let key = match.key {
+                filters.append(Filter(key: String(key) ))
+            }
+            else if let keySelector = match.keySelector {
+                filters.append(Filter(keySelector: String(keySelector) ))
+            }
+
+            if let index = match.index {
+                filters.append(Filter(index: String(index) ))
+            }
+            else if let indexSelector = match.indexSelector {
+                filters.append(Filter(indexSelector: String(indexSelector) ))
+            }
+            else if let indexRangeSelector = match.indexRangeSelector {
+                filters.append(Filter(indexRangeSelector: String(indexRangeSelector) ))
+            }
+        }
+        
+        return filters
     }
 }
