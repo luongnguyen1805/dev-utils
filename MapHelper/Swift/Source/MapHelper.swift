@@ -1,92 +1,99 @@
 import Foundation
 
-extension Array {        
+//MARK: ARRAY EXTENSION
+extension Array {
     subscript(of nav: Any...) -> Any? {
         get {
+            if let params = nav as? [String] {
+                let sel = params[0]
+                if sel.starts(with: "$") {
+                    let selector = String(sel.dropFirst())
+                    
+                    let results = MapHelper.executeSelector(self, selector)
+                    
+                    return results.map { result in
+                        let navigator = result.navigator
+                        return self[of: navigator]
+                    }
+                }
+            }
+
             return MapHelper.getValue(of: self, navigator: nav)
         }
         set(newValue) {
             if (newValue == nil) {
                 return
             }
+            
+            if let params = nav as? [String] {
+                let sel = params[0]
+                if sel.starts(with: "$") {
+                    let selector = String(sel.dropFirst())
+                                      
+                    let results = MapHelper.executeSelector(self, selector)
+                    
+                    results.forEach {result in
+                        let navigator = result.navigator
+                        self[of: navigator] = newValue
+                    }
+
+                    return
+                }
+            }
+
             MapHelper.applyChangeArray(to: &self, navigator: nav, targetValue: MapHelper.TargetValue(mode: .setValue, key: nil, value: newValue!))
         }
     }
-    
-    subscript(selector selector: String) -> Any? {
-        get {
-            if (selector.isEmpty) {
-                return nil
-            }
-            
-            let results = MapHelper.executeSelector(self, selector)
-            
-            return results.map { result in
-                let navigator = result.navigator
-                return self[of: navigator]
-            }
-        }
-        
-        set(newValue) {
-            if (selector.isEmpty) {
-                return
-            }
-            
-            let results = MapHelper.executeSelector(self, selector)
-            
-            results.forEach {result in
-                let navigator = result.navigator
-                self[of: navigator] = newValue
-            }
-            
-        }
-    }
 }
 
+//MARK: DICTIONARY EXTENSION
 extension Dictionary {
     subscript(of nav: Any...) -> Any? {
         get {
+            
+            if let params = nav as? [String] {
+                let sel = params[0]
+                if sel.starts(with: "$") {
+                    let selector = String(sel.dropFirst())
+                    
+                    let results = MapHelper.executeSelector(self, selector)
+                    
+                    return results.map { result in
+                        let navigator = result.navigator
+                        return self[of: navigator]
+                    }
+                }
+            }
+            
             return MapHelper.getValue(of: self, navigator: nav)
         }
         set(newValue) {
             if (newValue == nil) {
                 return
             }
+            
+            if let params = nav as? [String] {
+                let sel = params[0]
+                if sel.starts(with: "$") {
+                    let selector = String(sel.dropFirst())
+                                      
+                    let results = MapHelper.executeSelector(self, selector)
+                    
+                    results.forEach {result in
+                        let navigator = result.navigator
+                        self[of: navigator] = newValue
+                    }
+
+                    return
+                }
+            }
+            
             MapHelper.applyChangeDictionary(to: &self, navigator: nav, targetValue: MapHelper.TargetValue(mode: .setValue, key: nil, value: newValue!))
         }
     }
-
-    subscript(selector selector: String) -> Any? {
-        get {
-            if (selector.isEmpty) {
-                return nil
-            }
-            
-            let results = MapHelper.executeSelector(self, selector)
-            
-            return results.map { result in
-                let navigator = result.navigator
-                return self[of: navigator]
-            }
-        }
-        
-        set(newValue) {
-            if (selector.isEmpty) {
-                return
-            }
-            
-            let results = MapHelper.executeSelector(self, selector)
-            
-            results.forEach {result in
-                let navigator = result.navigator
-                self[of: navigator] = newValue
-            }
-            
-        }
-    }
-
 }
 
+//MARK: MAPHELPER
 class MapHelper {
 
     struct Filter {
@@ -364,7 +371,7 @@ class MapHelper {
     
     //MARK: PRIVATE
     private static func parseFilters(from: String) -> [Filter] {
-        let regx = #/^((?<keySelector>\?\([^\[\]]+\))|(?<key>[^\[\]]+))?(\[(?<indexRangeSelector>\d*\.\.-?\d+)\]|\[(?<indexSelector>\?\([^\[\]]+\))\]|\[(?<index>\d+)\])?$/#
+        let regx = #/^((?<keySelector>\?[(\{][^\[\]]+[\}\)])|(?<key>[^\[\]]+))?(\[(?<indexRangeSelector>\d*\.\.-?\d+)\]|\[(?<indexSelector>\?[\(\{][^\[\]]+[\}\)])\]|\[(?<index>\d+)\])?$/#
 
         var filters: [Filter] = []
         

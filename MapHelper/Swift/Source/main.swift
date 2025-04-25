@@ -20,7 +20,7 @@ var myDict = [
 ]
 myDict[of: "books",0] = ["title": "Adventure", "color": "red"]
 
-myDict[selector: "books[?(@.title=Red)]/title"] = "Bingo"
+myDict[of: "$books[?{ title = 'Red' }]/title"] = "Bingo"
 
 let str = MapHelper.anyToJSONString(myDict) ?? ""
 
