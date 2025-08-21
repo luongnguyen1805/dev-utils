@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Suppose you would like to upload a package-file (zip) to Host 
+# Script will upload a package-file (zip) to Host 
 # Usage: [-h HOST] [PACKAGE]
 
 set -euo pipefail
