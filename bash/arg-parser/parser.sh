@@ -47,7 +47,7 @@ parse() {
         done
         ;;
       *)
-        echo "parse: bad spec $1" >&2
+        echo "Bad Spec $1" >&2
         return 1
         ;;
     esac
@@ -62,6 +62,10 @@ parse() {
       # exact match (short or long)
       matched_opts+=("${arg##*-}")   # strip ALL leading dashes
       local count=${opt_counts[$arg]}
+      if (( count > $# )); then
+        echo "Invalid Arguments for Option $arg" >&2
+        return 1
+      fi
       if (( count > 0 )); then
         local vars=(${opt_vars[$arg]})
         for ((i=0; i<count; i++)); do
@@ -78,6 +82,10 @@ parse() {
         if [[ ${opt_counts[$short]+_} ]]; then
           matched_opts+=("${short##*-}")
           local count=${opt_counts[$short]}
+          if (( count > $# )); then
+            echo "Invalid Arguments for Option $short" >&2
+            return 1
+          fi
           if (( count > 0 )); then
             local vars=(${opt_vars[$short]})
             for ((i=0; i<count; i++)); do
@@ -87,14 +95,14 @@ parse() {
             done
           fi
         else
-          echo "parse: unknown option $short" >&2
+          echo "Invalid Option $short" >&2
           return 1
         fi
       done
 
-    elif [[ $arg == --* ]]; then
+    elif [[ $arg == -* ]]; then
       # unknown long option
-      echo "parse: unknown option $arg" >&2
+      echo "Invalid Option $arg" >&2
       return 1
 
     else
