@@ -13,15 +13,31 @@ parse() {
     case $1 in
       ---) shift; break ;;
       -*:*)
-        local opt=${1%%:*}        # e.g. "-p"
+        local opt=${1%%:*}        # e.g. "-p"    
+        local long=
+        if [[ $opt == -*--* ]]; then
+          short="${opt%%--*}"   # take everything before first `--`
+          short="${short#-}"    # strip leading "-"
+
+          long="--${opt#*--}"     # take everything after `--`
+          opt="-$short"
+        fi
+           
         local count=${1##*:}
         shift
         local vars=()
         for ((i=0; i<count; i++)); do
           vars+=("$1"); shift
         done
+
         opt_counts[$opt]=$count
         opt_vars[$opt]="${vars[*]}"
+
+        if [[ -n $long ]]; then
+          opt_counts[$long]=$count
+          opt_vars[$long]="${vars[*]}"
+        fi
+
         ;;
       pos:*)
         local count=${1##*:}
@@ -106,7 +122,17 @@ parse() {
 # SRC= DST=
 # MATCHED_OPTS=()
 
-# parse --update:2 SRC DST --allow:0 -n:0 -z:0 -p:2 P1 P2 -x:1 X1 -c:3 C1 C2 C3 pos:2 D1 D2 --- "$@"
+# parse --update:2 SRC DST --allow:0 -n:0 -z:0 -p--pass:2 P1 P2 -x:1 X1 -c:3 C1 C2 C3 pos:2 D1 D2 --- "$@"
+# parse \
+#   --update:2 SRC DST \
+#   --allow:0 \
+#   -n:0 \
+#   -z:0 \
+#   -p--pass:2 P1 P2 \
+#   -x:1 X1 \
+#   -c:3 C1 C2 C3 \
+#   pos:2 D1 D2 \
+#   --- "$@"
 
 # echo "P1=$P1 P2=$P2 X1=$X1"
 # echo "C1=$C1 C2=$C2 C3=$C3"

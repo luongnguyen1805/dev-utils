@@ -10,8 +10,7 @@ HOST=
 PACKAGE=
 
 . ./parser.sh
-parse -h:1 HOST pos:1 PACKAGE --- "$@"
+parse --host:1 HOST pos:1 PACKAGE --- "$@"
 
 echo "Attempting to upload file '$PACKAGE' to '$HOST'"
-
 
