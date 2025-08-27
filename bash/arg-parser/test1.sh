@@ -52,9 +52,14 @@ assert_eq "dest.txt" "$DEST" "long opt arg2"
 # Test 5: positional args
 P1=""; P2=""
 MATCHED_OPTS=()
-parse pos:2 P1 P2 --- foo bar
+parse ::2 P1 P2 --- foo bar
 assert_eq "" "${MATCHED_OPTS[*]}" "no options"
 assert_eq "foo" "$P1" "positional arg1"
 assert_eq "bar" "$P2" "positional arg2"
+
+# Test 6: all positional args
+P=()
+parse :: P --- foo bar
+assert_eq "foo bar" "${P[*]}" "all positional args"
 
 echo "All tests passed ✅"

@@ -7,11 +7,18 @@ parse() {
   local -A opt_vars=()
   local -a pos_vars=()
   local -a matched_opts=()
+  local catch_all_var=
+  local matched_opts_var=
 
   # --- 1. read spec ---
   while [[ $# -gt 0 ]]; do
     case $1 in
       ---) shift; break ;;
+      -:)
+        shift
+        matched_opts_var=$1
+        shift
+        ;;        
       -*:*)
         local opt=${1%%:*}        # e.g. "-p"    
         local long=
@@ -39,12 +46,18 @@ parse() {
         fi
 
         ;;
-      pos:*)
-        local count=${1##*:}
-        shift
-        for ((i=0; i<count; i++)); do
-          pos_vars+=("$1"); shift
-        done
+      ::*)
+        if [[ $1 == "::" ]]; then
+            shift
+            catch_all_var=$1
+            shift
+        else
+          local count=${1##*:}
+          shift
+          for ((i=0; i<count; i++)); do
+            pos_vars+=("$1"); shift
+          done
+        fi
         ;;
       *)
         echo "Bad Spec $1" >&2
@@ -118,8 +131,18 @@ parse() {
     fi
   done
 
+  if [[ -n $catch_all_var ]]; then
+    local -n ref=$catch_all_var
+    ref=("${remaining[@]}")
+  fi
+
   # --- 4. return matched options ---
+  if [[ -n $matched_opts_var ]]; then
+    local -n ref=$matched_opts_var
+    ref=("${matched_opts[@]}")
+  fi
   MATCHED_OPTS=("${matched_opts[@]}")
+
 }
 
 # ===== Example usage =====
@@ -130,7 +153,7 @@ parse() {
 # SRC= DST=
 # MATCHED_OPTS=()
 
-# parse --update:2 SRC DST --allow:0 -n:0 -z:0 -p--pass:2 P1 P2 -x:1 X1 -c:3 C1 C2 C3 pos:2 D1 D2 --- "$@"
+# parse --update:2 SRC DST --allow:0 -n:0 -z:0 -p--pass:2 P1 P2 -x:1 X1 -c:3 C1 C2 C3 ::2 D1 D2 --- "$@"
 # parse \
 #   --update:2 SRC DST \
 #   --allow:0 \
@@ -139,7 +162,7 @@ parse() {
 #   -p--pass:2 P1 P2 \
 #   -x:1 X1 \
 #   -c:3 C1 C2 C3 \
-#   pos:2 D1 D2 \
+#   ::2 D1 D2 \
 #   --- "$@"
 
 # echo "P1=$P1 P2=$P2 X1=$X1"

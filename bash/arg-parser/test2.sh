@@ -21,7 +21,7 @@ assert_eq() {
 # helper to run parser with standard spec
 run_parse() {  
   local SPEC="--update:2 SRC DST --allow:0 -n:0 -z:0 \
-    -p--pass:2 P1 P2 -x:1 X1 -c:3 C1 C2 C3 pos:2 D1 D2"  
+    -p--pass:2 P1 P2 -x:1 X1 -c:3 C1 C2 C3 ::2 D1 D2"  
   parse $SPEC --- "$@"
 }
 
